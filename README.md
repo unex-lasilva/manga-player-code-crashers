@@ -4,5 +4,5 @@ O Manga Play será a plataforma de streaming da Manga Rosa. Nela, vocês deverã
 Link para o dataset: https://drive.google.com/drive/folders/1oVq3bZhEznLWbcabT3cDOc2unzMswP0y?usp=sharing
 
 # Equipe: <nome-da-equipe>
-1. <Nome de fulano>
-2. <Nome de fulana>
+1. Tony Cleriston Oliveira dos Santos Junior
+2. João Arthur Nascimento Mascarenhas
