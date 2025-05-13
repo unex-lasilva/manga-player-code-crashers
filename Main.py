@@ -4,8 +4,8 @@ import numpy as np
 
 def carregar_dados():
     """Carrega os dados dos arquivos CSV."""
-    avaliacoes = pd.read_csv('archive/ratings_small.csv')
-    metadados = pd.read_csv('archive/movies_metadata.csv', low_memory=False)
+    avaliacoes = pd.read_csv('../../OneDrive/Documentos/GitHub/manga-player-code-crashers/archive/ratings_small.csv')
+    metadados = pd.read_csv('../../OneDrive/Documentos/GitHub/manga-player-code-crashers/archive/movies_metadata.csv', low_memory=False)
     return avaliacoes, metadados
 
 
@@ -186,6 +186,79 @@ def gerar_regras_associacao(conjuntos_frequentes, dataset, confianca_minima):
     return regras, mapa_regras
 
 
+def recomendar_por_historico(filmes_usuario, mapa_regras, dataset):
+    """Recomenda filmes com base no histórico completo do usuário."""
+    recomendacoes = {}
+    usuario_set = set(filmes_usuario)
+
+    for antecedente, consequentes in mapa_regras.items():
+        if set(antecedente) <= usuario_set:
+            for consequente, conf, _ in consequentes:
+                for f in consequente:
+                    if f not in usuario_set and f not in recomendacoes:
+                        suporte = calcular_suporte([f], dataset)
+                        recomendacoes[f] = (conf, suporte)
+
+    ordenadas = sorted(
+        recomendacoes.items(),
+        key=lambda item: (item[1][0], item[1][1]),
+        reverse=True
+    )
+    return [filme for filme, _ in ordenadas[:5]]
+
+
+def recomendar_por_ultimo_filme(filmes_usuario, regras, dataset,
+                                limite_confianca_min=0.01, max_tentativas=5):
+    """Recomenda filmes com base no último filme assistido pelo usuário."""
+    recomendacoes = {}
+    usuario_set = set(filmes_usuario)
+    tentativas = 0
+
+    for filme in reversed(filmes_usuario):
+        tentativas += 1
+
+        for antecedente, consequentes in regras.items():
+            for consequente, conf, _ in consequentes:
+                if conf < limite_confianca_min:
+                    continue
+                if filme in antecedente:
+                    alvos = consequente
+                elif filme in consequente:
+                    alvos = antecedente
+                else:
+                    continue
+
+                for f in alvos:
+                    if f not in usuario_set and f not in recomendacoes:
+                        suporte = calcular_suporte([f], dataset)
+                        recomendacoes[f] = (conf, suporte)
+
+        if recomendacoes or tentativas >= max_tentativas:
+            break
+
+    ordenadas = sorted(
+        recomendacoes.items(),
+        key=lambda item: (item[1][0], item[1][1]),
+        reverse=True
+    )
+    return [filme for filme, _ in ordenadas[:5]]
+
+def recomendar_filmes_populares(filmes_usuario, niveis_frequentes, quantidade=5):
+    """Recomenda filmes populares para usuários sem recomendações específicas."""
+    nivel1 = niveis_frequentes.get(1, [])
+    nivel1.sort(key=lambda x: x[1], reverse=True)
+
+    recomendacoes = []
+    for filme_info, _ in nivel1:
+        filme = filme_info[0]
+        if filme not in filmes_usuario:
+            recomendacoes.append(filme)
+            if len(recomendacoes) >= quantidade:
+                break
+
+    return recomendacoes
+
+
 def exibir_conjuntos_itens(niveis_frequentes):
     """Exibe os conjuntos de itens frequentes de forma estilizada."""
     df_conjuntos = pd.DataFrame([
@@ -250,6 +323,50 @@ def exibir_regras(regras, max_exibir=50):
         print(formato.format(*linha))
     print(separador)
 
+def exibir_recomendacoes(id_usuario, filmes_usuario, recomendacoes_hist, recomendacoes_ult, niveis_frequentes):
+    """Exibe as recomendações de filmes para o usuário de forma estilizada."""
+    print("\n" + "=" * 80)
+    print(f"🎬 FILMES CURTIDOS PELO USUÁRIO {id_usuario}".center(80))
+    print("=" * 80)
+
+    for i, filme in enumerate(filmes_usuario, 1):
+        print(f"{i}. {filme}")
+
+    print(f"\nTotal de filmes curtidos: {len(filmes_usuario)}")
+    print("=" * 80)
+
+    # Recomendações baseadas no histórico
+    print("\n" + "=" * 80)
+    print("🔍 RECOMENDAÇÕES BASEADAS NO HISTÓRICO COMPLETO".center(80))
+    print("=" * 80)
+
+    if recomendacoes_hist:
+        for i, filme in enumerate(recomendacoes_hist, 1):
+            print(f"{i}. {filme}")
+    else:
+        recomendacoes_populares = recomendar_filmes_populares(filmes_usuario, niveis_frequentes)
+        print("⚠️ Nenhuma recomendação específica encontrada. Sugestões populares:")
+        for i, filme in enumerate(recomendacoes_populares, 1):
+            print(f"{i}. {filme}")
+
+    print("=" * 80)
+
+    # Recomendações baseadas no último filme
+    print("\n" + "=" * 80)
+    print("🎯 RECOMENDAÇÕES BASEADAS NO ÚLTIMO FILME CURTIDO".center(80))
+    print("=" * 80)
+
+    if recomendacoes_ult:
+        for i, filme in enumerate(recomendacoes_ult, 1):
+            print(f"{i}. {filme}")
+    else:
+        recomendacoes_populares = recomendar_filmes_populares(filmes_usuario, niveis_frequentes)
+        print("⚠️ Nenhuma recomendação específica encontrada. Sugestões populares:")
+        for i, filme in enumerate(recomendacoes_populares, 1):
+            print(f"{i}. {filme}")
+
+    print("=" * 80)
+
 
 def main():
     """Função principal do programa."""
@@ -261,14 +378,14 @@ def main():
     print("\n" + "=" * 80)
     print("🎥 SISTEMA DE RECOMENDAÇÃO DE FILMES".center(80))
     print("=" * 80)
-    print("Carregando dados... Por favor aguarde...".center(80))
+    print("Por favor aguarde...".center(80))
 
     avaliacoes, metadados = carregar_dados()
     avaliacoes, metadados = preprocessar_dados(avaliacoes, metadados)
     df = unificar_dados(avaliacoes, metadados)
     mapa_usuario_filmes, dataset = criar_dataset(df)
 
-    print("Minerando regras de associação...".center(80))
+    print("Carregando regras...".center(80))
     print("=" * 80)
 
     # Mineração de regras de associação
@@ -282,6 +399,30 @@ def main():
     exibir_conjuntos_itens(niveis_frequentes)
     regras, mapa_regras = gerar_regras_associacao(todos_conjuntos_frequentes, dataset, confianca_minima)
     exibir_regras(regras)
+
+    # Interface com o usuário
+    print("\n" + "=" * 80)
+    print("👤 SELEÇÃO DE USUÁRIO".center(80))
+    print("=" * 80)
+
+    try:
+        print(f"Existem {len(mapa_usuario_filmes)} usuários disponíveis.")
+        id_usuario_indice = int(
+            input("Digite o índice do usuário desejado (0-{}): ".format(len(mapa_usuario_filmes) - 1)))
+        exemplo_id_usuario = list(mapa_usuario_filmes.keys())[id_usuario_indice]
+    except (ValueError, IndexError):
+        print("⚠️ ID de usuário inválido. Usando o primeiro usuário como exemplo.")
+        exemplo_id_usuario = list(mapa_usuario_filmes.keys())[0]
+
+    filmes_usuario = mapa_usuario_filmes[exemplo_id_usuario]
+
+    # Geração de recomendações
+    recomendacoes_hist = recomendar_por_historico(filmes_usuario, mapa_regras, dataset)
+    recomendacoes_ult = recomendar_por_ultimo_filme(filmes_usuario, mapa_regras, dataset)
+
+    # Exibição das recomendações
+    exibir_recomendacoes(exemplo_id_usuario, filmes_usuario, recomendacoes_hist, recomendacoes_ult, niveis_frequentes)
+
 
 if __name__ == "__main__":
     main()
